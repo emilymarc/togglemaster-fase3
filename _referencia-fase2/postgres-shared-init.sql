@@ -1,0 +1,2 @@
+CREATE DATABASE flag_db;
+CREATE DATABASE targeting_db;

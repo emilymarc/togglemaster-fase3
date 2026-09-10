@@ -1,0 +1,31 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: togglemaster-cluster
+  region: us-east-1
+  version: "1.36"
+
+iam:
+  serviceRoleARN: "arn:aws:iam::697683755104:role/LabRole"
+
+vpc:
+  id: "vpc-0c704ee3e5ae3b3d1"
+  subnets:
+    private:
+      private-1a:
+        id: "subnet-0c3a3b87eb1fee714"
+      private-1b:
+        id: "subnet-03a3c2fff2e31f697"
+      private-1c:
+        id: "subnet-09a5c2b00f846b895"
+
+managedNodeGroups:
+  - name: togglemaster-nodes
+    instanceType: t3.medium
+    minSize: 1
+    desiredCapacity: 2
+    maxSize: 4
+    privateNetworking: true
+    iam:
+      instanceRoleARN: "arn:aws:iam::697683755104:role/LabRole"

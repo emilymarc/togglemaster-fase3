@@ -1,0 +1,151 @@
+services:
+
+  auth-postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=auth_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  postgres-shared:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    volumes:
+      - ./postgres-shared-init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis-db:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  dynamodb-local:
+      image: amazon/dynamodb-local:latest
+      ports:
+        - "8000:8000"
+      healthcheck:
+        test: ["CMD-SHELL", "wget -qO- http://localhost:8000/ || exit 0"]
+        interval: 10s
+        timeout: 5s
+        retries: 5
+
+  auth-service:
+    build:
+      context: ./auth-service
+    ports:
+      - "8001:8001"
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@auth-postgres:5432/auth_db
+      - PORT=8001
+      - MASTER_KEY=admin-secreto-123
+    depends_on:
+      auth-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  flag-service:
+    build:
+      context: ./flag-service
+    ports:
+      - "8002:8002"
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@postgres-shared:5432/flag_db
+      - PORT=8002
+      - AUTH_SERVICE_URL=http://auth-service:8001
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      postgres-shared:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  targeting-service:
+    build:
+      context: ./targeting-service
+    ports:
+      - "8003:8003"
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@postgres-shared:5432/targeting_db
+      - PORT=8003
+      - AUTH_SERVICE_URL=http://auth-service:8001
+    depends_on:
+      auth-service:
+        condition: service_healthy
+      postgres-shared:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  evaluation-service:
+    build:
+      context: ./evaluation-service
+    ports:
+      - "8004:8004"
+    environment:
+      - PORT=8004
+      - REDIS_URL=redis://redis-db:6379
+      - FLAG_SERVICE_URL=http://flag-service:8002
+      - TARGETING_SERVICE_URL=http://targeting-service:8003
+      - SERVICE_API_KEY=service-key-local-123
+      - AWS_SQS_URL=http://placeholder
+      - AWS_REGION=us-east-1
+    depends_on:
+      flag-service:
+        condition: service_healthy
+      targeting-service:
+        condition: service_healthy
+      redis-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8004/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  analytics-service:
+    build:
+      context: ./analytics-service
+    ports:
+      - "8005:8005"
+    environment:
+      - AWS_ACCESS_KEY_ID=fake
+      - AWS_SECRET_ACCESS_KEY=fake
+      - AWS_SESSION_TOKEN=fake
+      - AWS_SQS_URL=http://placeholder
+      - AWS_REGION=us-east-1
+      - AWS_DYNAMODB_TABLE=ToggleMasterAnalytics
+      - AWS_DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+      - PORT=8005
+    depends_on:
+      dynamodb-local:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5

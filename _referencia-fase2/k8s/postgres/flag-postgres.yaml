@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: flag-postgres-pvc
+  namespace: togglemaster
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: gp2
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flag-postgres
+  namespace: togglemaster
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: flag-postgres
+  template:
+    metadata:
+      labels:
+        app: flag-postgres
+    spec:
+      containers:
+        - name: flag-postgres
+          image: postgres:15-alpine
+          ports:
+            - containerPort: 5432
+          env:
+            - name: POSTGRES_DB
+              value: flag-db
+            - name: POSTGRES_USER
+              value: postgres
+            - name: POSTGRES_PASSWORD
+              value: postgres
+          volumeMounts:
+            - name: flag-postgres-storage
+              mountPath: /var/lib/postgresql/data
+              subPath: pgdata
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: flag-postgres-storage
+          persistentVolumeClaim:
+            claimName: flag-postgres-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: flag-postgres
+  namespace: togglemaster
+spec:
+  selector:
+    app: flag-postgres
+  ports:
+    - port: 5432
+      targetPort: 5432
+  type: ClusterIP
