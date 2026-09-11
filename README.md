@@ -234,6 +234,10 @@ Para retomar, repita com `desiredSize=2` e `start-db-instance`.
 | Tags imutáveis no ECR | Uma imagem nunca é sobrescrita, então rollback é sempre seguro. |
 | `services/` sem o sufixo `-service` | Os filtros `paths:` dos workflows apontam para `services/<nome>/**`. |
 
+O registro completo dos problemas enfrentados, com sintoma, causa e solução,
+fica em **[`docs/DESAFIOS.md`](docs/DESAFIOS.md)** — é a fonte do item
+"desafios encontrados e decisões tomadas" do relatório de entrega.
+
 ---
 
 ## Status
