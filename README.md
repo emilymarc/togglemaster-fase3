@@ -14,13 +14,17 @@ vulnerabilidade, e **entrega contínua via GitOps** com ArgoCD.
 
 ## Arquitetura
 
-| Microsserviço | Linguagem | Armazenamento |
-|---|---|---|
-| `auth`       | Go     | RDS PostgreSQL |
-| `flag`       | Python | RDS PostgreSQL |
-| `targeting`  | Python | RDS PostgreSQL |
-| `evaluation` | Go     | ElastiCache (Redis) + SQS |
-| `analytics`  | Python | DynamoDB |
+| Microsserviço | Linguagem | Porta | Rota | Armazenamento |
+|---|---|---|---|---|
+| `auth-service`       | Go     | 8001 | `/auth`      | RDS PostgreSQL (`auth_db`) |
+| `flag-service`       | Python | 8002 | `/flags`     | RDS PostgreSQL (`flag_db`) |
+| `targeting-service`  | Python | 8003 | `/targeting` | RDS PostgreSQL (`targeting_db`) |
+| `evaluation-service` | Go     | 8004 | `/evaluate`  | ElastiCache Redis (TLS) + SQS |
+| `analytics-service`  | Python | 8005 | `/analytics` | DynamoDB + SQS |
+
+Portas, nomes e rotas são herdados da Fase 2 — não foram redefinidos. As pastas
+em `services/` não levam o sufixo `-service`; ele aparece nos nomes dos
+repositórios ECR e dos objetos do Kubernetes, como na Fase 2.
 
 Todos rodam em um cluster **EKS**, dentro de uma VPC com subnets públicas e
 privadas em duas zonas de disponibilidade. Os bancos ficam exclusivamente nas
@@ -196,8 +200,26 @@ kubectl get nodes
 
 Duas coisas **não** voltam sozinhas, porque viviam dentro do cluster
 destruído: os **Secrets do Kubernetes** e o **ArgoCD**. A partir do Bloco 11,
-a retomada inclui recriar os secrets a partir dos outputs do Terraform e
-reinstalar o ArgoCD via Helm.
+a retomada inclui recriá-los. Os endpoints mudam a cada `apply`, então os
+valores saem sempre dos outputs do Terraform — nunca copiados à mão:
+
+```bash
+kubectl apply -f ../gitops/shared/namespace.yaml
+
+for svc in auth flag targeting; do
+  kubectl create secret generic ${svc}-service-secret -n togglemaster \
+    --from-literal=DATABASE_URL="$(terraform output -json database_urls | jq -r .$svc)"
+done
+
+kubectl create secret generic evaluation-service-secret -n togglemaster \
+  --from-literal=REDIS_URL="$(terraform output -raw redis_url)" \
+  --from-literal=AWS_SQS_URL="$(terraform output -raw sqs_queue_url)"
+
+kubectl create secret generic analytics-service-secret -n togglemaster \
+  --from-literal=AWS_SQS_URL="$(terraform output -raw sqs_queue_url)"
+```
+
+Depois disso, reinstalar o ArgoCD via Helm e reaplicar as Applications.
 
 > Por isso o **Dia 3 é o único dia para deixar o ambiente ligado**:
 > reinstalar o ArgoCD e ressincronizar as 5 Applications custa ~20 minutos, e
@@ -233,6 +255,11 @@ Para retomar, repita com `desiredSize=2` e `start-db-instance`.
 | Opções avançadas do RDS desligadas | `monitoring_interval`, `performance_insights` e export de logs exigem IAM Role própria. Deixá-las ligadas faz a criação falhar com erro de permissão que parece bloqueio do RDS. |
 | Tags imutáveis no ECR | Uma imagem nunca é sobrescrita, então rollback é sempre seguro. |
 | `services/` sem o sufixo `-service` | Os filtros `paths:` dos workflows apontam para `services/<nome>/**`. |
+| Redis como `aws_elasticache_replication_group`, não cluster simples | Só o replication group suporta TLS em trânsito. O `evaluation-service` espera `rediss://`, como na Fase 2. |
+| DynamoDB apenas com hash key `event_id` (String) | É o atributo que o `analytics/app.py` grava. Não há `query` nem `scan` no código, então uma range key seria peso morto. |
+| Uma única fila SQS, sem dead letter queue | O enunciado pede uma fila. O `analytics` já trata mensagem inválida deixando de removê-la. |
+| NAT Gateway, embora não listado no enunciado | Sem saída para a internet, os nodes nas subnets privadas não baixam as imagens de bootstrap e não entram no cluster. A Fase 2 usou a mesma solução. |
+| Terraform devolve `DATABASE_URL` pronta | Os serviços leem uma URL completa, não host e senha separados. Montar no output evita remontar na criação dos Secrets. |
 
 O registro completo dos problemas enfrentados, com sintoma, causa e solução,
 fica em **[`docs/DESAFIOS.md`](docs/DESAFIOS.md)** — é a fonte do item
@@ -245,8 +272,8 @@ fica em **[`docs/DESAFIOS.md`](docs/DESAFIOS.md)** — é a fonte do item
 - [x] Estrutura do repositório
 - [x] Backend remoto no S3
 - [x] Módulo de networking (VPC, subnets, IGW, NAT, rotas)
-- [ ] Módulo EKS (cluster + node groups com LabRole)
-- [ ] Módulo data-stores (RDS, ElastiCache, DynamoDB, SQS)
+- [x] Módulo EKS (cluster + node groups com LabRole)
+- [x] Módulo data-stores (RDS, ElastiCache, DynamoDB, SQS)
 - [ ] Repositórios ECR
 - [ ] Pipelines de CI com DevSecOps
 - [ ] Manifestos GitOps

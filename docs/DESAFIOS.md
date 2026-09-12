@@ -137,9 +137,125 @@ algum recurso continua cobrando.
 
 ---
 
+## 7. RDS bloqueado na Fase 2, liberado na Fase 3
+
+**Contexto.** Na Fase 2 a criação de instâncias RDS foi barrada pela LabRole,
+e a solução na época foi rodar PostgreSQL como Deployments no Kubernetes com
+volumes EBS. A Fase 3, porém, exige explicitamente **3 instâncias RDS
+provisionadas por Terraform** — então era preciso saber, antes de escrever o
+módulo, se a restrição continuava valendo.
+
+**Verificação.** Antes de qualquer código, testamos a criação direto pela CLI:
+
+```bash
+aws rds create-db-instance \
+  --db-instance-identifier teste-rds \
+  --db-instance-class db.t3.micro \
+  --engine postgres \
+  --master-username teste \
+  --master-user-password TesteSenha123 \
+  --allocated-storage 20 \
+  --no-publicly-accessible
+```
+
+**Resultado.** A criação **funcionou**. O RDS está disponível na conta, e o
+módulo `data-stores` pôde ser escrito como planejado, sem plano B.
+
+**Precaução mantida.** Ainda assim, deixamos desligadas todas as opções do RDS
+que exigem uma IAM Role própria, já que criá-las é proibido no Academy:
+
+```hcl
+monitoring_interval                 = 0      # Enhanced Monitoring
+performance_insights_enabled        = false
+enabled_cloudwatch_logs_exports     = []
+iam_database_authentication_enabled = false
+```
+
+**Aprendizado.** Verificar uma restrição herdada em vez de assumi-la custou
+cinco minutos e evitou construir uma arquitetura alternativa desnecessária.
+Restrições de ambiente mudam entre fases e entre laboratórios.
+
+---
+
+## 8. Guia inicial divergia do projeto real
+
+**Sintoma.** Ao revisar o plano de implementação contra o código dos serviços
+e os manifestos da Fase 2, seis itens não correspondiam à realidade. Dois
+teriam quebrado só em runtime, o que é o pior tipo de erro.
+
+| Item | Plano inicial | Realidade da Fase 2 |
+|---|---|---|
+| Chave do DynamoDB | `eventId` + range `timestamp` (N) | `event_id` (S), sem range key |
+| SQS | fila + dead letter queue | uma fila |
+| Portas dos serviços | `8080` para todos | 8001, 8002, 8003, 8004, 8005 |
+| Health checks | liveness `/health`, readiness `/ready` | ambos `/health` |
+| Réplicas | 3 | 1 |
+| Secrets | `host` e `password` separados | `DATABASE_URL` completa |
+
+**Impacto dos dois erros silenciosos.** Com `eventId`/`timestamp` numérico,
+todo `put_item` do analytics falharia com `ValidationException`. Com
+readiness em `/ready` — endpoint que não existe —, todos os pods ficariam
+permanentemente fora do balanceador, sem erro aparente no deploy.
+
+**Causa.** O plano foi escrito a partir do enunciado, sem consultar o código
+que já existia.
+
+**Solução.** Revisão sistemática: extrair do código as variáveis de ambiente
+realmente lidas, os atributos realmente gravados e as portas realmente
+expostas, e corrigir o plano a partir disso.
+
+```bash
+# variaveis que cada servico le de verdade
+grep -rhoE 'os\.Getenv\("[A-Z_]+"\)|environ\.get\("[A-Z_]+"' services/
+```
+
+**Aprendizado.** Em uma fase que reimplementa algo existente, o código
+anterior é a especificação — não o enunciado. O enunciado diz *o que* provisionar;
+o código diz *com quais nomes e valores*.
+
+---
+
+## 9. Redis: cluster simples não suporta TLS
+
+**Sintoma.** O `evaluation-service` espera uma URL `rediss://` (com TLS), e a
+Fase 2 usava um endpoint `master.*`. O recurso `aws_elasticache_cluster` não
+oferece criptografia em trânsito.
+
+**Causa.** No ElastiCache, `transit_encryption_enabled` só existe em
+`aws_elasticache_replication_group`. O cluster simples sempre fala em texto
+claro, e a URL seria `redis://`.
+
+**Decisão.** Usar `aws_elasticache_replication_group` com um único nó:
+
+```hcl
+transit_encryption_enabled = true
+at_rest_encryption_enabled = true
+automatic_failover_enabled = false   # um no so, sem replica
+```
+
+Mantém a paridade com a Fase 2 e atende o "1 Cluster ElastiCache (Redis)" do
+enunciado, ao custo de um pouco mais de configuração e um apply mais demorado.
+
+---
+
+## 10. NAT Gateway: recurso além do enunciado
+
+**Contexto.** O enunciado lista, em networking, apenas VPC, Subnets, Internet
+Gateway e Route Tables. O NAT Gateway não aparece.
+
+**Por que foi incluído.** Os worker nodes ficam em subnets privadas e
+precisam de saída para a internet para baixar as imagens de bootstrap do EKS.
+Sem NAT, eles nunca entram no cluster — o node group fica em estado de erro.
+A Fase 2 chegou à mesma conclusão (`privateNetworking: true` com NAT).
+
+**Registro.** É a única adição de recurso além do que o enunciado pede, feita
+por necessidade técnica e não por preferência. Custa cerca de US$ 1,08/dia, o
+que reforça a rotina de destruição ao fim de cada sessão.
+
+---
+
 <!-- PRÓXIMAS ENTRADAS: acrescente abaixo conforme os desafios aparecerem.
      Sugestões do que provavelmente ainda vem:
-     - RDS bloqueado ou não pela LabRole (e as flags que exigem IAM Role)
      - imagem base com CVE crítica no scan de contêiner
      - credenciais do Academy expirando no meio do CI
      - Service em Pending por falta das tags kubernetes.io/role/elb

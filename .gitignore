@@ -14,7 +14,7 @@ htmlcov/
 .ipynb_checkpoints/
 
 # Terraform
-**/.terraform/*
+.terraform/
 *.tfstate
 *.tfstate.*
 *.tfvars
@@ -22,7 +22,7 @@ crash.log
 tfplan
 *.tfplan
 !example.tfvars
-.terraform.lock.hcl
+
 
 # AWS / deploy artifacts
 .aws/
