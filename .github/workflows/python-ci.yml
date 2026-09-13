@@ -88,7 +88,7 @@ jobs:
       # SCA — varre as dependencias de requirements.txt contra
       # bases publicas de CVE.
       - name: Trivy — SCA (dependencias)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: 'services/${{ inputs.service_dir }}'
@@ -146,7 +146,7 @@ jobs:
       # Diferente do passo anterior (trivy fs), que escaneava o codigo.
       # exit-code 1 bloqueia o pipeline em vulnerabilidade CRITICAL.
       - name: Trivy — scan da imagem (CRITICAL bloqueia)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'image'
           image-ref: ${{ steps.meta.outputs.image }}
