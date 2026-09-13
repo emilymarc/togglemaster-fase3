@@ -1,10 +1,6 @@
-# Bloco 2 — Provider + chamada dos modulos
-
 provider "aws" {
   region = var.aws_region
 
-  # Aplicado automaticamente a todo recurso criado.
-  # Facilita achar tudo depois e montar a estimativa de custos.
   default_tags {
     tags = {
       Project     = "ToggleMaster"
@@ -14,20 +10,41 @@ provider "aws" {
   }
 }
 
-# Descobre as AZs da regiao em vez de escrever na mao
 data "aws_availability_zones" "available" {
   state = "available"
 }
 
-# ── Bloco 3 ────────────────────────────────────────────────
-# module "networking" {
-#   source       = "./modules/networking"
-#   project_name = var.project_name
-#   azs          = slice(data.aws_availability_zones.available.names, 0, 2)
-# }
+# calling modules
+module "networking" {
+  source       = "./modules/networking"
+  project_name = var.project_name
+  azs          = slice(data.aws_availability_zones.available.names, 0, 2)
+}
 
 # ── Bloco 4 ────────────────────────────────────────────────
-# module "eks" { source = "./modules/eks"  ... }
+module "eks" {
+  source       = "./modules/eks"
+  project_name = var.project_name
+
+  private_subnet_ids = module.networking.private_subnet_ids
+  public_subnet_ids  = module.networking.public_subnet_ids
+
+  # Os nodes so conseguem entrar no cluster depois que a rota do NAT
+  # existe. Como o node group nao referencia o NAT em nenhum argumento,
+  # a dependencia precisa ser declarada aqui — depends_on aceita
+  # modulos e recursos, nunca variaveis.
+  depends_on = [module.networking]
+}
 
 # ── Bloco 5 ────────────────────────────────────────────────
-# module "data_stores" { source = "./modules/data-stores"  ... }
+module "data_stores" {
+  source       = "./modules/data-stores"
+  project_name = var.project_name
+
+  vpc_id             = module.networking.vpc_id
+  vpc_cidr           = module.networking.vpc_cidr
+  private_subnet_ids = module.networking.private_subnet_ids
+
+  db_username = var.db_username
+  db_password = var.db_password
+}

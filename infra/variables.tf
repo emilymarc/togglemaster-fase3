@@ -1,24 +1,21 @@
-# Bloco 2 — Variaveis compartilhadas
-
 variable "aws_region" {
-  description = "Regiao AWS de todos os recursos"
+  description = "AWS region for all resources"
   type        = string
   default     = "us-east-1"
 }
 
 variable "project_name" {
-  description = "Prefixo de todos os recursos"
-  type        = string
-  default     = "togglemaster"
+  type    = string
+  default = "togglemaster"
 }
 
 variable "environment" {
   type    = string
-  default = "hml"
+  default = "dev"
 }
 
 variable "services" {
-  description = "Os 5 microsservicos — usado para ECR (bloco 6)"
+  description = "The 5 ToggleMaster microservices"
   type        = list(string)
   default     = ["auth", "flag", "targeting", "evaluation", "analytics"]
 }

@@ -1,1 +1,17 @@
-# Valores que este modulo devolve para os outros
+# Valores que este modulo devolve para a raiz
+
+output "cluster_name" {
+  value = aws_eks_cluster.main.name
+}
+
+output "cluster_endpoint" {
+  value = aws_eks_cluster.main.endpoint
+}
+
+output "cluster_version" {
+  value = aws_eks_cluster.main.version
+}
+
+output "node_group_name" {
+  value = aws_eks_node_group.main.node_group_name
+}

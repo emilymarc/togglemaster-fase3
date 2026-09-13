@@ -14,13 +14,15 @@ htmlcov/
 .ipynb_checkpoints/
 
 # Terraform
-**/.terraform/*
+.terraform/
 *.tfstate
 *.tfstate.*
 *.tfvars
 crash.log
 tfplan
 *.tfplan
+!example.tfvars
+
 
 # AWS / deploy artifacts
 .aws/
