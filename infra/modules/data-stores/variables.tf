@@ -1,4 +1,4 @@
-# Entradas que este modulo recebe do main.tf da raiz.
+# variables do main.tf da raiz.
 
 variable "project_name" {
   description = "Prefixo no nome de todos os recursos de dados"

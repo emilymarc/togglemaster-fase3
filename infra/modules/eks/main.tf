@@ -13,7 +13,7 @@ resource "aws_eks_cluster" "main" {
 
   vpc_config {
     subnet_ids              = concat(var.private_subnet_ids, var.public_subnet_ids)
-    endpoint_public_access  = true   # so kubectl works from your laptop
+    endpoint_public_access  = true # so kubectl works from your laptop
     endpoint_private_access = true
   }
 

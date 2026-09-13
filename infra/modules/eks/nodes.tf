@@ -3,10 +3,10 @@ resource "aws_eks_node_group" "main" {
   node_group_name = "${var.project_name}-nodes"
 
   #  node groups need a role too
-  node_role_arn   = data.aws_iam_role.lab_role.arn
+  node_role_arn = data.aws_iam_role.lab_role.arn
 
-  subnet_ids      = var.private_subnet_ids
-  instance_types  = ["t3.medium"]
+  subnet_ids     = var.private_subnet_ids
+  instance_types = ["t3.medium"]
 
   scaling_config {
     desired_size = 2

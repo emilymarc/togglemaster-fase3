@@ -7,19 +7,22 @@ resource "aws_db_instance" "postgres" {
 
   identifier     = "${var.project_name}-${each.key}-db"
   engine         = "postgres"
-  engine_version = "15.5"
-  instance_class = "db.t3.micro"    
+  # Major apenas, sem minor. A Fase 2 usava postgres:15-alpine, e
+  # declarar "15.5" quebra quando a AWS aposenta aquela minor — o
+  # provider aceita o prefixo e escolhe a minor vigente.
+  engine_version = "15"
+  instance_class = "db.t3.micro"
 
   allocated_storage = 20
   storage_encrypted = true
 
   db_name  = "${each.key}_db"
   username = var.db_username
-  password = var.db_password 
+  password = var.db_password
 
   db_subnet_group_name   = aws_db_subnet_group.main.name
   vpc_security_group_ids = [aws_security_group.db.id]
-  publicly_accessible    = false 
+  publicly_accessible    = false
 
   monitoring_interval                 = 0
   performance_insights_enabled        = false

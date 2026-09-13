@@ -1,8 +1,6 @@
 # Valores consumidos pela raiz e, depois, pelos Secrets do
-# Kubernetes no Bloco 10.
+# Kubernetes 
 
-# Os servicos leem UMA URL completa em DATABASE_URL — nao host e
-# senha separados. Montar aqui evita remontar na mao depois.
 output "database_urls" {
   description = "postgres://user:senha@host:5432/<svc>_db, por servico"
   sensitive   = true
@@ -12,7 +10,6 @@ output "database_urls" {
   }
 }
 
-# rediss:// (com TLS), igual a Fase 2
 output "redis_url" {
   value = "rediss://${aws_elasticache_replication_group.redis.primary_endpoint_address}:6379"
 }

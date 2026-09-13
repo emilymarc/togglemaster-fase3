@@ -1,6 +1,6 @@
 resource "aws_vpc" "main" {
   cidr_block           = "10.0.0.0/16"
-  enable_dns_support   = true   # EKS requirement
+  enable_dns_support   = true # EKS requirement
   enable_dns_hostnames = true
 
   tags = { Name = "${var.project_name}-vpc" }
@@ -29,7 +29,7 @@ resource "aws_subnet" "private" {
   availability_zone = var.azs[count.index]
 
   tags = {
-    Name = "${var.project_name}-private-${count.index + 1}"
+    Name                              = "${var.project_name}-private-${count.index + 1}"
     "kubernetes.io/role/internal-elb" = "1" # indicates where to connect internal lb to k8
   }
 }

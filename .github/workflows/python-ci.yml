@@ -1,0 +1,106 @@
+# Pipeline compartilhado dos servicos em Python: flag-service,
+# targeting-service e analytics-service.
+# Nao roda sozinho — e chamado pelo workflow de cada servico.
+name: reusable-python-ci
+
+on:
+  workflow_call:
+    inputs:
+      service_dir:
+        description: "Pasta em services/ (ex.: flag)"
+        required: true
+        type: string
+      service_name:
+        description: "Nome do repositorio no ECR (ex.: flag-service)"
+        required: true
+        type: string
+
+jobs:
+  # ── Estagio 1: build e testes unitarios ─────────────────────
+  build-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/${{ inputs.service_dir }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'      # mesma versao do Dockerfile
+          cache: pip
+          cache-dependency-path: services/${{ inputs.service_dir }}/requirements.txt
+
+      - name: Dependencias
+        run: pip install -r requirements.txt
+
+      # Python nao compila num binario: o equivalente ao "go build"
+      # e verificar que todos os modulos compilam sem erro de sintaxe.
+      - name: Build (compilacao dos modulos)
+        run: python -m compileall -q .
+
+      # ATENCAO: pytest sem testes sai com codigo 5 e reprovaria o job.
+      # O enunciado pede testes unitarios "se houver" — este passo
+      # deixa explicito no log quando nao ha, em vez de esconder.
+      - name: Testes unitarios
+        run: |
+          if compgen -G "test_*.py" > /dev/null || [ -d tests ]; then
+            pip install pytest
+            pytest -v
+          else
+            echo "Nenhum teste unitario neste servico — etapa ignorada."
+            echo "O enunciado pede testes unitarios 'se houver'."
+          fi
+
+  # ── Estagio 2: analise estatica (em paralelo com o build) ───
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: services/${{ inputs.service_dir }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instala o linter
+        run: pip install flake8
+
+      # Primeira passada: so erros graves — falha o job.
+      - name: flake8 (erros)
+        run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      # Segunda passada: estilo — informativa, nao reprova.
+      - name: flake8 (estilo)
+        run: flake8 . --count --max-line-length=120 --statistics --exit-zero
+
+  # ── Estagio 3: security scan — o gate ───────────────────────
+  # Enunciado: SCA nas dependencias, SAST no codigo fonte, e
+  # bloqueio se houver vulnerabilidade CRITICA.
+  security-scan:
+    runs-on: ubuntu-latest
+    needs: [build-and-test, lint]
+    steps:
+      - uses: actions/checkout@v4
+
+      # SCA — varre as dependencias de requirements.txt contra
+      # bases publicas de CVE.
+      - name: Trivy — SCA (dependencias)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: 'fs'
+          scan-ref: 'services/${{ inputs.service_dir }}'
+          severity: 'CRITICAL'
+          exit-code: '1'          # <- a regra de bloqueio
+          ignore-unfixed: 'true'  # ignora CVE que ainda nao tem correcao
+
+      # SAST — varre o codigo fonte procurando padroes inseguros.
+      # -lll: so severidade alta. -iii: so confianca alta.
+      - name: bandit — SAST (codigo fonte)
+        run: |
+          pip install bandit
+          bandit -r services/${{ inputs.service_dir }} -lll -iii
+  # ── Bloco 9 entra aqui: docker-build-push ───────────────────
+  # ── Bloco 10 entra aqui: update-gitops ──────────────────────
