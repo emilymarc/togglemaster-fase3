@@ -47,7 +47,7 @@ func main() {
 		MasterKey:  masterKey,
 	}
 
-	// --- Rotas de API ---
+	// --- Rotas da API ---
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", app.healthHandler)
 
