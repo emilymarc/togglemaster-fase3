@@ -1,290 +1,293 @@
-# ToggleMaster — Tech Challenge Fase 3
+# ToggleMaster — Fase 3: IaC · CI/CD · DevSecOps · GitOps
 
-Plataforma de *feature flags* composta por 5 microsserviços, provisionada
-integralmente por código na AWS.
+> POSTECH Tech Challenge — Pós-Tech Software Architecture  
+> Fase 3: Infraestrutura como Código, Pipeline DevSecOps e entrega contínua via GitOps
 
-Esta fase substitui o provisionamento manual da Fase 2 por **Infraestrutura
-como Código (Terraform)**, um **pipeline DevSecOps** com bloqueio por
-vulnerabilidade, e **entrega contínua via GitOps** com ArgoCD.
+---
 
-> **Ambiente:** AWS Academy (Opção A) — o Terraform não cria Roles nem
-> Policies de IAM; ele referencia a `LabRole` já existente na conta.
+## Visão Geral
+
+ToggleMaster é uma plataforma de **feature flags** composta por 5 microsserviços, implantada na AWS com EKS. Esta fase automatiza todo o ciclo de vida da infraestrutura e das aplicações usando Terraform, GitHub Actions e ArgoCD.
+
+**Antes (Fase 2):** `kubectl apply` manual, credenciais em texto, infraestrutura recriada no console em dias.  
+**Depois (Fase 3):** Se não está no código, não existe.
 
 ---
 
 ## Arquitetura
 
-| Microsserviço | Linguagem | Porta | Rota | Armazenamento |
-|---|---|---|---|---|
-| `auth-service`       | Go     | 8001 | `/auth`      | RDS PostgreSQL (`auth_db`) |
-| `flag-service`       | Python | 8002 | `/flags`     | RDS PostgreSQL (`flag_db`) |
-| `targeting-service`  | Python | 8003 | `/targeting` | RDS PostgreSQL (`targeting_db`) |
-| `evaluation-service` | Go     | 8004 | `/evaluate`  | ElastiCache Redis (TLS) + SQS |
-| `analytics-service`  | Python | 8005 | `/analytics` | DynamoDB + SQS |
-
-Portas, nomes e rotas são herdados da Fase 2 — não foram redefinidos. As pastas
-em `services/` não levam o sufixo `-service`; ele aparece nos nomes dos
-repositórios ECR e dos objetos do Kubernetes, como na Fase 2.
-
-Todos rodam em um cluster **EKS**, dentro de uma VPC com subnets públicas e
-privadas em duas zonas de disponibilidade. Os bancos ficam exclusivamente nas
-subnets privadas, sem acesso público.
-
-### Fluxo de entrega
-
 ```
-push na main
-  → CI: build + testes + lint
-  → CI: SCA (Trivy) + SAST (gosec/bandit)      ← bloqueia se CRÍTICO
-  → CI: build da imagem + scan do contêiner
-  → CI: push para o ECR com a tag do commit
-  → CI: atualiza a tag no repositório GitOps
-  → ArgoCD detecta e sincroniza no EKS
+┌─ IaC (Terraform) ─────┐     ┌─ CI/CD (GitHub Actions) ──────┐     ┌─ AWS Cloud ─────────────────┐
+│                        │     │                                │     │                             │
+│  modules/              │     │  Trigger: push/PR → main       │     │  ECR × 5 repos              │
+│  ├── networking        │────▶│  ├── build-and-test  ┐         │────▶│                             │
+│  ├── eks               │     │  ├── lint             ├ paralelo│     │  EKS Cluster                │
+│  ├── rds               │     │  ├── security-scan    ┘         │     │  └── ArgoCD (auto-sync)     │
+│  ├── elasticache       │     │  ├── docker-build-push          │     │      └── ns: togglemaster   │
+│  ├── dynamo_sqs        │     │  └── update-gitops              │     │          ├── auth (Go)       │
+│  └── ecr               │     │                                │     │          ├── flag (Python)   │
+│                        │     │  Reusable workflows:            │     │          ├── targeting (Py)  │
+│  State: S3 + DynamoDB  │     │  go-ci.yml · python-ci.yml     │     │          ├── evaluation (Go) │
+│  IAM: LabRole (data    │     │                                │     │          └── analytics (Py)  │
+│        source)         │     │                                │     │                             │
+└────────────────────────┘     └────────────────────────────────┘     │  RDS PostgreSQL × 3         │
+                                                                       │  ElastiCache Redis          │
+                                                                       │  DynamoDB (Analytics)       │
+                                                                       │  SQS (event queue)          │
+                                                                       └─────────────────────────────┘
 ```
-
-O pipeline **não tem acesso ao cluster**. Ele só escreve no Git; quem aplica
-no cluster é o ArgoCD, de dentro dele.
 
 ---
 
-## Estrutura do repositório
+## Microsserviços
+
+| Serviço | Linguagem | Função |
+|---------|-----------|--------|
+| `auth-service` | Go | Autenticação e emissão de tokens |
+| `flag-service` | Python | CRUD de feature flags |
+| `targeting-service` | Python | Regras de segmentação de usuários |
+| `evaluation-service` | Go | Avaliação de flags em tempo real |
+| `analytics-service` | Python | Coleta e análise de eventos |
+
+---
+
+## Estrutura do Repositório
 
 ```
 .
-├── services/              # os 5 microsserviços (código + Dockerfile)
-├── infra/                 # Terraform
-│   ├── backend.tf         # backend remoto no S3
-│   ├── main.tf            # provider + chamada dos módulos
+├── infra/                          # Terraform
+│   ├── main.tf
 │   ├── variables.tf
 │   ├── outputs.tf
+│   ├── backend.tf                  # S3 remote state + DynamoDB lock
 │   └── modules/
-│       ├── networking/    # VPC, subnets, IGW, NAT, route tables
-│       ├── eks/           # cluster + node groups (usa LabRole)
-│       └── data-stores/   # RDS, ElastiCache, DynamoDB, SQS
-├── .github/workflows/     # pipelines de CI (um por serviço)
+│       ├── networking/             # VPC, subnets, IGW, route tables
+│       ├── eks/                    # Cluster EKS + node groups (LabRole)
+│       ├── rds/                    # 3× PostgreSQL
+│       ├── elasticache/            # Redis
+│       ├── dynamo_sqs/             # DynamoDB + SQS
+│       └── ecr/                   # 5 repositórios ECR
+│
+├── services/
+│   ├── auth/                       # Go
+│   ├── flag/                       # Python
+│   ├── targeting/                  # Python
+│   ├── evaluation/                 # Go
+│   └── analytics/                  # Python
+│
 ├── gitops/
-│   ├── services/          # manifestos Kubernetes
-│   └── apps/              # Applications do ArgoCD
-└── _referencia-fase2/     # artefatos da Fase 2, apenas consulta
+│   └── services/
+│       ├── auth/deployment.yaml
+│       ├── flag/deployment.yaml
+│       ├── targeting/deployment.yaml
+│       ├── evaluation/deployment.yaml
+│       └── analytics/deployment.yaml
+│
+└── .github/
+    └── workflows/
+        ├── reusable-go-ci.yml      # Pipeline reutilizável para Go
+        ├── reusable-python-ci.yml  # Pipeline reutilizável para Python
+        ├── auth.yml                # Chama go-ci com service_dir=auth
+        ├── flag.yml                # Chama python-ci com service_dir=flag
+        ├── targeting.yml
+        ├── evaluation.yml
+        └── analytics.yml
 ```
 
 ---
 
-## Pré-requisitos
+## Infraestrutura (Terraform)
 
-Desenvolvimento em **Windows com Git Bash** (não WSL).
+### Pré-requisitos
 
-```bash
-winget install --id Hashicorp.Terraform -e
-winget install --id Kubernetes.kubectl   -e
-winget install --id Helm.Helm            -e
-winget install --id Amazon.AWSCLI        -e
-winget install --id GitHub.cli           -e
-winget install --id jqlang.jq            -e
-# trivy.exe e argocd.exe: baixar das releases e colocar em ~/bin
-```
+- Terraform >= 1.5
+- AWS CLI configurado (`aws configure` ou variáveis de ambiente)
+- Bucket S3 e tabela DynamoDB para o state backend já criados
 
-Configuração obrigatória do Git Bash — sem isso os contêineres Linux quebram
-com `bad interpreter: /bin/sh^M`:
+### Deploy
 
 ```bash
-git config --global core.autocrlf input
-```
+cd infra/
 
-Comandos interativos (que pedem senha) precisam de `winpty`:
-
-```bash
-winpty argocd login ...
-```
----
-
-## Como executar
-
-### 1. Credenciais do AWS Academy
-
-O Academy rotaciona as credenciais a cada sessão do laboratório. Copie o bloco de **AWS Details → AWS CLI** para `~/.aws/credentials` e confirme:
-
-```bash
-aws sts get-caller-identity
-```
-
-### 2. Bucket de estado
-
-Criado manualmente, fora do Terraform (ele precisa existir antes do `init`):
-
-```bash
-aws s3 mb s3://togglemaster-tfstate-25783 --region us-east-1
-aws s3api put-bucket-versioning \
-  --bucket togglemaster-tfstate-25783 \
-  --versioning-configuration Status=Enabled
-```
-
-### 3. Provisionar
-
-```bash
-cd infra
+# Inicializa com o backend remoto
 terraform init
+
+# Valida o plano antes de aplicar
 terraform plan
+
+# Aplica (~15 min; cria 25+ recursos)
 terraform apply
 ```
 
-O EKS leva de 10 a 15 minutos. Depois:
+### Restrição AWS Academy
 
-```bash
-aws eks update-kubeconfig --name togglemaster-cluster --region us-east-1
-kubectl get nodes
+O ambiente Academy não permite criar IAM Roles via Terraform. A `LabRole` é importada via **data source**:
+
+```hcl
+data "aws_iam_role" "lab_role" {
+  name = "LabRole"
+}
+```
+
+Essa role é associada ao cluster EKS e aos node groups.
+
+### State Remoto
+
+```hcl
+# infra/backend.tf
+terraform {
+  backend "s3" {
+    bucket         = "<seu-bucket-tfstate>"
+    key            = "togglemaster/terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "<sua-tabela-lock>"
+  }
+}
 ```
 
 ---
 
-## ⚠ Rotina de custo — ler antes de encerrar o dia
+## Pipeline CI/CD (GitHub Actions)
 
-O orçamento do Academy é limitado e o **control plane do EKS cobra mesmo
-parado** (~US$ 2,40/dia). Com tudo ligado 24h o ambiente custa cerca de
-**US$ 8,00/dia**; trabalhando por sessões e destruindo ao final, o total dos
-três dias fica em torno de **US$ 9**.
+### Fluxo por serviço
 
-### Custo por recurso (aproximado, us-east-1)
-
-| Recurso | US$/dia |
-|---|---|
-| EKS control plane | 2,40 |
-| 2× t3.medium (nodes) | 2,00 |
-| 3× RDS db.t3.micro | 1,30 |
-| NAT Gateway | 1,08 |
-| LoadBalancer do ArgoCD | 0,54 |
-| ElastiCache t3.micro | 0,41 |
-| Armazenamento (EBS + RDS) | 0,34 |
-| **Total** | **~8,00** |
-
-### Ao encerrar cada sessão
-
-**A ordem importa.** O LoadBalancer do ArgoCD é criado pelo Kubernetes, não
-pelo Terraform — se o cluster for destruído antes, ele fica órfão cobrando
-sem nada conectado, e o `terraform destroy` não o remove.
-
-```bash
-# 1. Libera o LoadBalancer pelo Kubernetes (só a partir do Bloco 11)
-kubectl delete svc argocd-server -n argocd
-
-# 2. Destrói o que custa, preservando os repositórios ECR e as imagens
-cd infra
-terraform destroy -auto-approve \
-  -target=module.eks \
-  -target=module.data_stores \
-  -target=module.networking
-
-# 3. Confere que não sobrou nada cobrando
-bash scripts/check-orphans.sh
+```
+push / PR → main
+     │
+     ▼
+┌─────────────────────────────────────────┐
+│  workflow_call → reusable pipeline       │
+│                                         │
+│  [build-and-test] ──┐                   │
+│                      ├── paralelo        │
+│  [lint]         ────┘                   │
+│         │                               │
+│         ▼                               │
+│  [security-scan]  ← GATE               │
+│   Trivy SCA (deps) + gosec/bandit SAST  │
+│   exit-code 1 se CRITICAL encontrado    │
+│         │                               │
+│         ▼                               │
+│  [docker-build-push]                    │
+│   build → Trivy image scan → ECR push   │
+│   tag: SHA[:7]  |  só em push na main   │
+│         │                               │
+│         ▼                               │
+│  [update-gitops]                        │
+│   sed → deployment.yaml (nova tag)      │
+│   stefanzweifel/git-auto-commit@v5      │
+│   commit [skip ci] → main               │
+└─────────────────────────────────────────┘
 ```
 
-> **Nunca apague o bucket S3 de estado.** Ele não é gerenciado pelo Terraform,
-> então o `destroy` não o toca — mas apagá-lo à mão significa que o Terraform
-> esquece que é dono de tudo, e você recomeça do zero.
+### Segredos necessários
 
-### Ao retomar no dia seguinte
+Configure em **Settings → Secrets → Actions** do repositório:
 
-```bash
-# 1. Renovar credenciais do Academy (elas expiraram)
-aws sts get-caller-identity
+| Secret | Descrição |
+|--------|-----------|
+| `AWS_ACCESS_KEY_ID` | Chave de acesso AWS |
+| `AWS_SECRET_ACCESS_KEY` | Chave secreta AWS |
+| `AWS_SESSION_TOKEN` | Token de sessão (obrigatório no Academy) |
 
-# 2. Reconstruir (~20 min)
-cd infra && terraform apply -auto-approve
+### Ferramentas de segurança
 
-# 3. Reapontar o kubectl — o endpoint do cluster é novo
-aws eks update-kubeconfig --name togglemaster-cluster --region us-east-1
-kubectl get nodes
-```
-
-Duas coisas **não** voltam sozinhas, porque viviam dentro do cluster
-destruído: os **Secrets do Kubernetes** e o **ArgoCD**. A partir do Bloco 11,
-a retomada inclui recriá-los. Os endpoints mudam a cada `apply`, então os
-valores saem sempre dos outputs do Terraform — nunca copiados à mão:
-
-```bash
-kubectl apply -f ../gitops/shared/namespace.yaml
-
-for svc in auth flag targeting; do
-  kubectl create secret generic ${svc}-service-secret -n togglemaster \
-    --from-literal=DATABASE_URL="$(terraform output -json database_urls | jq -r .$svc)"
-done
-
-kubectl create secret generic evaluation-service-secret -n togglemaster \
-  --from-literal=REDIS_URL="$(terraform output -raw redis_url)" \
-  --from-literal=AWS_SQS_URL="$(terraform output -raw sqs_queue_url)"
-
-kubectl create secret generic analytics-service-secret -n togglemaster \
-  --from-literal=AWS_SQS_URL="$(terraform output -raw sqs_queue_url)"
-```
-
-Depois disso, reinstalar o ArgoCD via Helm e reaplicar as Applications.
-
-> Por isso o **Dia 3 é o único dia para deixar o ambiente ligado**:
-> reinstalar o ArgoCD e ressincronizar as 5 Applications custa ~20 minutos, e
-> esse não é um tempo que se queira gastar na manhã da gravação. Destrua
-> **depois** de gravar.
-
-### Pausa curta (sem destruir)
-
-Economiza ~US$ 3,30/dia em segundos, mas o control plane continua cobrando.
-Serve para algumas horas, não para a noite:
-
-```bash
-aws eks update-nodegroup-config \
-  --cluster-name togglemaster-cluster \
-  --nodegroup-name togglemaster-nodes \
-  --scaling-config minSize=0,desiredSize=0,maxSize=4
-
-for db in auth flag targeting; do
-  aws rds stop-db-instance --db-instance-identifier togglemaster-${db}-db
-done
-```
-
-Para retomar, repita com `desiredSize=2` e `start-db-instance`.
+| Ferramenta | Tipo | Serviços |
+|------------|------|----------|
+| Trivy (fs) | SCA — dependências | Todos |
+| gosec | SAST — código Go | auth, evaluation |
+| bandit | SAST — código Python | flag, targeting, analytics |
+| Trivy (image) | Container scan | Todos |
 
 ---
 
-## Decisões técnicas
+## GitOps + ArgoCD
 
-| Decisão | Motivo |
-|---|---|
-| `data "aws_iam_role" "lab_role"` em vez de criar role | O AWS Academy proíbe criar Roles/Policies de IAM. O data source **lê** a LabRole existente e a associa ao cluster e aos node groups. |
-| Backend S3 com `use_lockfile` | Trava nativa do S3, sem precisar de tabela DynamoDB só para lock. |
-| Opções avançadas do RDS desligadas | `monitoring_interval`, `performance_insights` e export de logs exigem IAM Role própria. Deixá-las ligadas faz a criação falhar com erro de permissão que parece bloqueio do RDS. |
-| Tags imutáveis no ECR | Uma imagem nunca é sobrescrita, então rollback é sempre seguro. |
-| `services/` sem o sufixo `-service` | Os filtros `paths:` dos workflows apontam para `services/<nome>/**`. |
-| Redis como `aws_elasticache_replication_group`, não cluster simples | Só o replication group suporta TLS em trânsito. O `evaluation-service` espera `rediss://`, como na Fase 2. |
-| DynamoDB apenas com hash key `event_id` (String) | É o atributo que o `analytics/app.py` grava. Não há `query` nem `scan` no código, então uma range key seria peso morto. |
-| Uma única fila SQS, sem dead letter queue | O enunciado pede uma fila. O `analytics` já trata mensagem inválida deixando de removê-la. |
-| NAT Gateway, embora não listado no enunciado | Sem saída para a internet, os nodes nas subnets privadas não baixam as imagens de bootstrap e não entram no cluster. A Fase 2 usou a mesma solução. |
-| Terraform devolve `DATABASE_URL` pronta | Os serviços leem uma URL completa, não host e senha separados. Montar no output evita remontar na criação dos Secrets. |
+O ArgoCD monitora a pasta `gitops/` e sincroniza automaticamente qualquer mudança no `deployment.yaml` com o cluster EKS.
 
-O registro completo dos problemas enfrentados, com sintoma, causa e solução,
-fica em **[`docs/DESAFIOS.md`](docs/DESAFIOS.md)** — é a fonte do item
-"desafios encontrados e decisões tomadas" do relatório de entrega.
+### Instalar ArgoCD no cluster
+
+```bash
+# Instala o ArgoCD no namespace argocd
+kubectl create namespace argocd
+kubectl apply -n argocd -f https://raw.githubusercontent.com/argoproj/argo-cd/stable/manifests/install.yaml
+
+# Aguarda os pods subirem
+kubectl wait --for=condition=available deployment/argocd-server -n argocd --timeout=120s
+```
+
+### Acessar a interface web
+
+```bash
+# 1. Recupera a senha inicial do admin
+kubectl -n argocd get secret argocd-initial-admin-secret \
+  -o jsonpath="{.data.password}" | base64 -d && echo
+
+# 2. Abre o port-forward (mantém o terminal aberto)
+kubectl port-forward svc/argocd-server -n argocd 8080:443
+```
+
+Acessa em **https://localhost:8080** → usuário: `admin`, senha: passo 1.  
+O certificado é self-signed — aceita o aviso do browser.
+
+### Configuração de sync
+
+Os Apps ArgoCD são configurados com:
+
+```yaml
+syncPolicy:
+  automated:
+    selfHeal: true    # reverte mudanças manuais no cluster
+    prune: true       # remove recursos deletados do gitops
+```
 
 ---
 
-## Status
+## Fluxo Completo de Deploy
 
-- [x] Estrutura do repositório
-- [x] Backend remoto no S3
-- [x] Módulo de networking (VPC, subnets, IGW, NAT, rotas)
-- [x] Módulo EKS (cluster + node groups com LabRole)
-- [x] Módulo data-stores (RDS, ElastiCache, DynamoDB, SQS)
-- [ ] Repositórios ECR
-- [ ] Pipelines de CI com DevSecOps
-- [ ] Manifestos GitOps
-- [ ] ArgoCD e sincronização automática
+```
+1. Dev faz push em services/<service>/
+2. GitHub Actions dispara o pipeline do serviço
+3. Build → Lint → Security Scan (GATE) → Docker Build+Push para ECR
+4. CI atualiza gitops/services/<service>/deployment.yaml com nova tag SHA
+5. ArgoCD detecta a mudança no repositório (polling ~3 min)
+6. ArgoCD sincroniza → Kubernetes faz rolling update do pod
+```
 
 ---
 
-## Entregáveis
+## Desafios Encontrados
 
-- **Vídeo de demonstração:** _(link a adicionar)_
-- **Repositório GitOps:** _(link a adicionar)_
-- **Relatório de entrega:** _(link a adicionar)_
+| Desafio | Causa | Solução |
+|---------|-------|---------|
+| Branch protection bloqueando o bot | GH013: CI bot sem permissão de push na main | Settings → Rules → Bypass list → adicionar GitHub Actions bot |
+| ECR tag immutability | Mesmo SHA não pode sobrescrever tag existente | `git commit --allow-empty -m "ci: force new pipeline run"` para gerar novo SHA |
+| Race condition no GitOps | 5 pipelines simultâneos, só o primeiro push tem sucesso (non-fast-forward) | Disparar os serviços com ~1 min de intervalo; não afeta produção |
 
-## Participantes
+---
 
-_(nomes a adicionar)_
+## Decisões Técnicas
+
+**stefanzweifel/git-auto-commit-action@v5** em vez de git manual no update-gitops: a action cuida de config, add, commit, pull e push em um único step, evitando race conditions e configuração de identidade git no CI.
+
+**permissions: contents: write** no job docker-build-push: necessário para que o GITHUB_TOKEN do bot tenha permissão de push no repositório ao commitar o deployment.yaml.
+
+**Trivy em dois modos**: `fs` no security-scan (varre dependências antes do build) e `image` no docker-build-push (varre as camadas da imagem final, incluindo pacotes do S.O.). São complementares — um não substitui o outro.
+
+**LabRole via data source**: restrição do AWS Academy impede criação de IAM Roles via Terraform. Usar `data "aws_iam_role"` importa a role existente sem tentar criá-la.
+
+---
+
+## Pré-requisitos Locais
+
+- [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.5
+- [kubectl](https://kubernetes.io/docs/tasks/tools/)
+- [AWS CLI](https://aws.amazon.com/cli/) v2
+- [Docker](https://www.docker.com/)
+- Acesso ao cluster: `aws eks update-kubeconfig --region us-east-1 --name <cluster-name>`
+
+---
+
+## Autores
+
+POSTECH — Pós-Tech Software Architecture · Fase 3 · 2026
