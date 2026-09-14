@@ -25,7 +25,7 @@ if not all([AWS_REGION, SQS_QUEUE_URL, DYNAMODB_TABLE_NAME]):
     log.critical("Erro: AWS_REGION, AWS_SQS_URL, e AWS_DYNAMODB_TABLE devem ser definidos.")
     sys.exit(1)
 
-# --- Clientes Boto3 ---
+# --- Boto3 ---
 # Criamos a sessão uma vez
 try:
     session = boto3.Session(region_name=AWS_REGION)
