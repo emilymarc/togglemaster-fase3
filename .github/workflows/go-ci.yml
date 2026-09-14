@@ -1,5 +1,3 @@
-# Pipeline Go: auth-service e evaluation-service.
-# e chamado por cada servico.
 name: reusable-go-ci
 
 on:
@@ -37,7 +35,7 @@ jobs:
 
       - name: go vet
         run: go vet ./...
-# sem teste, o go test imprime "no test files" e sai 0.
+
       - name: Testes unitarios
         run: go test -v ./...
 
@@ -56,28 +54,21 @@ jobs:
           working-directory: services/${{ inputs.service_dir }}
           args: --timeout=5m
 
-  # ── Estagio 3: security scan — o gate ───────────────────────
-  # Enunciado: SCA nas dependencias, SAST no codigo fonte, e
-  # bloqueio se houver vulnerabilidade CRITICA.
   security-scan:
     runs-on: ubuntu-latest
     needs: [build-and-test, lint]
     steps:
       - uses: actions/checkout@v4
 
-      # SCA — varre as dependencias declaradas em go.mod/go.sum
-      # contra bases publicas de CVE.
       - name: Trivy — SCA (dependencias)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: 'services/${{ inputs.service_dir }}'
           severity: 'CRITICAL'
-          exit-code: '1'          # <- a regra de bloqueio
-          ignore-unfixed: 'true'  # ignora CVE que ainda nao tem correcao
+          exit-code: '1'
+          ignore-unfixed: 'true'
 
-      # SAST — varre o codigo fonte procurando padroes inseguros
-      # (credencial no codigo, SQL concatenado, cripto fraca).
       - name: gosec — SAST (codigo fonte)
         uses: securego/gosec@master
         with:
@@ -87,13 +78,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [security-scan]
     permissions:
-      contents: write   # necessario para o git push do update-gitops
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
-      # Academy exige tres variaveis (inclui session token).
-      # Configure em Settings > Secrets > Actions do repositorio:
-      #   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_SESSION_TOKEN
       - name: Configurar credenciais AWS
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -102,13 +90,10 @@ jobs:
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: us-east-1
 
-      # O login devolve o registry em steps.login-ecr.outputs.registry
-      # (ex.: 123456789.dkr.ecr.us-east-1.amazonaws.com)
       - name: Login no ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      # Short SHA de 7 caracteres como tag — rastreavel no git log.
       - name: Derivar tag e URL da imagem
         id: meta
         run: |
@@ -124,9 +109,6 @@ jobs:
             -t "${{ steps.meta.outputs.image }}" \
             services/${{ inputs.service_dir }}
 
-      # Trivy escaneia a IMAGEM (camadas + pacotes do S.O.).
-      # Diferente do passo anterior (trivy fs), que escaneava o codigo.
-      # exit-code 1 bloqueia o pipeline em vulnerabilidade CRITICAL.
       - name: Trivy — scan da imagem (CRITICAL bloqueia)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
@@ -136,15 +118,10 @@ jobs:
           exit-code: '1'
           ignore-unfixed: 'true'
 
-      # So faz push em push na main (nao em PRs).
-      # Em PRs: build + scan ja provam que a imagem e valida.
       - name: Push no ECR
         if: github.event_name == 'push'
         run: docker push "${{ steps.meta.outputs.image }}"
 
-      # Troca a linha "image:" no deployment.yaml pela nova tag.
-      # sed busca qualquer coisa depois de "togglemaster-<servico>:"
-      # e substitui pela URL completa com o SHA atual.
       - name: Atualizar tag no GitOps
         if: github.event_name == 'push'
         run: |
@@ -152,8 +129,6 @@ jobs:
             "s|image: .*togglemaster-${{ inputs.service_dir }}:.*|image: ${{ steps.meta.outputs.image }}|" \
             gitops/services/${{ inputs.service_dir }}/deployment.yaml
 
-      # A action cuida de todo o git: config, add, commit, pull e push.
-      # [skip ci] no commit evita que o push dispare o pipeline de novo.
       - name: Commitar e subir a mudança
         if: github.event_name == 'push'
         uses: stefanzweifel/git-auto-commit-action@v5
