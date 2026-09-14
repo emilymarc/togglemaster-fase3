@@ -96,8 +96,6 @@ Comandos interativos (que pedem senha) precisam de `winpty`:
 ```bash
 winpty argocd login ...
 ```
-
-
 ---
 
 ## Como executar
