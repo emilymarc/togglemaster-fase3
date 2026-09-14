@@ -103,8 +103,7 @@ winpty argocd login ...
 
 ### 1. Credenciais do AWS Academy
 
-O Academy rotaciona as credenciais a cada sessão do laboratório. Copie o bloco
-de **AWS Details → AWS CLI** para `~/.aws/credentials` e confirme:
+O Academy rotaciona as credenciais a cada sessão do laboratório. Copie o bloco de **AWS Details → AWS CLI** para `~/.aws/credentials` e confirme:
 
 ```bash
 aws sts get-caller-identity
