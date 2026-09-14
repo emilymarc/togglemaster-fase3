@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: evaluation
-          image: 982599766065.dkr.ecr.us-east-1.amazonaws.com/togglemaster-evaluation:latest
+          image: 982599766065.dkr.ecr.us-east-1.amazonaws.com/togglemaster-evaluation:1d1837c
           ports:
             - containerPort: 8004
           env:
