@@ -1,5 +1,3 @@
-# Valores que este modulo devolve para a raiz
-
 output "cluster_name" {
   value = aws_eks_cluster.main.name
 }

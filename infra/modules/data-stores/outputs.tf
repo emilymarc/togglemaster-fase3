@@ -1,6 +1,3 @@
-# Valores consumidos pela raiz e, depois, pelos Secrets do
-# Kubernetes 
-
 output "database_urls" {
   description = "postgres://user:senha@host:5432/<svc>_db, por servico"
   sensitive   = true

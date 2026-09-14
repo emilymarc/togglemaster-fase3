@@ -7,9 +7,6 @@ resource "aws_db_instance" "postgres" {
 
   identifier     = "${var.project_name}-${each.key}-db"
   engine         = "postgres"
-  # Major apenas, sem minor. A Fase 2 usava postgres:15-alpine, e
-  # declarar "15.5" quebra quando a AWS aposenta aquela minor — o
-  # provider aceita o prefixo e escolhe a minor vigente.
   engine_version = "15"
   instance_class = "db.t3.micro"
 

@@ -1,4 +1,3 @@
-# PUBLIC: all outbound traffic → Internet Gateway
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
   route {
@@ -7,7 +6,6 @@ resource "aws_route_table" "public" {
   }
 }
 
-# PRIVATE: all outbound traffic → NAT Gateway (no inbound)
 resource "aws_route_table" "private" {
   vpc_id = aws_vpc.main.id
   route {
@@ -16,7 +14,6 @@ resource "aws_route_table" "private" {
   }
 }
 
-# Attach to route table
 resource "aws_route_table_association" "public" {
   count          = 2
   subnet_id      = aws_subnet.public[count.index].id

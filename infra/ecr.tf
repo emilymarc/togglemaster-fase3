@@ -5,11 +5,10 @@ resource "aws_ecr_repository" "services" {
   image_tag_mutability = "IMMUTABLE"
 
   image_scanning_configuration {
-    scan_on_push = true # free AWS-native scan
+    scan_on_push = true
   }
 }
 
-# Keep only the 10 most recent images per repo
 resource "aws_ecr_lifecycle_policy" "cleanup" {
   for_each   = aws_ecr_repository.services
   repository = each.value.name
@@ -28,7 +27,6 @@ resource "aws_ecr_lifecycle_policy" "cleanup" {
   })
 }
 
-# returno das URLs
 output "ecr_repository_urls" {
   value = { for k, v in aws_ecr_repository.services : k => v.repository_url }
 }

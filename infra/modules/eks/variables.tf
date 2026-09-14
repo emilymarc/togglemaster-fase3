@@ -1,5 +1,3 @@
-# Entradas que este modulo recebe do main.tf da raiz.
-
 variable "project_name" {
   description = "Prefixo do nome do cluster e do node group"
   type        = string

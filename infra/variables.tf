@@ -20,8 +20,6 @@ variable "services" {
   default     = ["auth", "flag", "targeting", "evaluation", "analytics"]
 }
 
-# Bloco 5 — credenciais dos bancos. Definidas em terraform.tfvars,
-# que esta no .gitignore e NUNCA deve ser commitado.
 variable "db_username" {
   type      = string
   sensitive = true

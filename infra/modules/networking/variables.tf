@@ -1,6 +1,3 @@
-# Todo argumento passado na chamada do modulo precisa ter
-# um bloco "variable" correspondente aqui.
-
 variable "project_name" {
   description = "Prefixo usado no Name de todos os recursos de rede"
   type        = string

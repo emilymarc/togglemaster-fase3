@@ -1,5 +1,3 @@
-# variables do main.tf da raiz.
-
 variable "project_name" {
   description = "Prefixo no nome de todos os recursos de dados"
   type        = string
