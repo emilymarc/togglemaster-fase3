@@ -14,7 +14,7 @@ import (
 	"github.com/joho/godotenv"
 )
 
-// Contexto global para Redis
+// Contexto global para o Redis
 var ctx = context.Background()
 
 // App struct para injeção de dependência
@@ -51,7 +51,7 @@ func main() {
 		log.Fatal("TARGETING_SERVICE_URL deve ser definida")
 	}
 
-	// SQS é opcional no dev local, mas obrigatório em prod
+	// SQS é opcional no dev local, e obrigatório em prod
 	sqsQueueURL := os.Getenv("AWS_SQS_URL")
 	awsRegion := os.Getenv("AWS_REGION")
 	if sqsQueueURL == "" {
