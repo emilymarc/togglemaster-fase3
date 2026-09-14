@@ -107,7 +107,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [security-scan]
     permissions:
-      contents: write
+      contents: write   # necessario para o git push do update-gitops
     steps:
       - uses: actions/checkout@v4
 
@@ -162,22 +162,21 @@ jobs:
         if: github.event_name == 'push'
         run: docker push "${{ steps.meta.outputs.image }}"
 
-      # Atualiza o manifesto GitOps com a nova tag.
-      # Fica em standby ate o Bloco 10 criar os manifests em gitops/.
-      # [skip ci] evita loop infinito de triggers.
+      # Troca a linha "image:" no deployment.yaml pela nova tag.
+      # sed busca qualquer coisa depois de "togglemaster-<servico>:"
+      # e substitui pela URL completa com o SHA atual.
       - name: Atualizar tag no GitOps
         if: github.event_name == 'push'
         run: |
-          MANIFEST="gitops/services/${{ inputs.service_dir }}/deployment.yaml"
-          if [ -f "$MANIFEST" ]; then
-            sed -i "s|image: .*togglemaster-${{ inputs.service_dir }}:.*|image: ${{ steps.meta.outputs.image }}|" "$MANIFEST"
-            git config user.name "github-actions[bot]"
-            git config user.email "github-actions[bot]@users.noreply.github.com"
-            git add "$MANIFEST"
-            git diff --cached --quiet || git commit -m "ci: ${{ inputs.service_dir }} -> ${{ steps.meta.outputs.tag }} [skip ci]"
-            git pull --rebase origin main
-            git push
-          else
-            echo "GitOps manifest ainda nao existe — sera ativado automaticamente no Bloco 10."
-          fi
+          sed -i \
+            "s|image: .*togglemaster-${{ inputs.service_dir }}:.*|image: ${{ steps.meta.outputs.image }}|" \
+            gitops/services/${{ inputs.service_dir }}/deployment.yaml
 
+      # A action cuida de todo o git: config, add, commit, pull e push.
+      # [skip ci] no commit evita que o push dispare o pipeline de novo.
+      - name: Commitar e subir a mudança
+        if: github.event_name == 'push'
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "deploy: ${{ inputs.service_dir }} -> ${{ steps.meta.outputs.tag }} [skip ci]"
+          file_pattern: gitops/services/${{ inputs.service_dir }}/deployment.yaml
