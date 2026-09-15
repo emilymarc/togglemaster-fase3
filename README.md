@@ -13,7 +13,7 @@
 ToggleMaster é uma plataforma de **feature flags** composta por 5 microsserviços, implantada na AWS com EKS. Esta fase automatiza todo o ciclo de vida da infraestrutura e das aplicações usando Terraform, GitHub Actions e ArgoCD.
 
 **Antes (Fase 2):** `kubectl apply` manual, credenciais em texto, infraestrutura recriada no console em dias.  
-**Depois (Fase 3):** Se não está no código, não existe.
+**Depois (Fase 3):** Se não está no código, não existe. Tudo, feito via Terraform, automatizado e versionado.
 
 ---
 
