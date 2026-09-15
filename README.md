@@ -292,5 +292,5 @@ syncPolicy:
 ---
 
 ## Autores
-
+Emily Marcolino
 POSTECH — Pós-Tech Software Architecture · Fase 3 · 2026
