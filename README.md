@@ -2,6 +2,8 @@
 
 > POSTECH Tech Challenge — Pós-Tech Software Architecture  
 > Fase 3: Infraestrutura como Código, Pipeline DevSecOps e entrega contínua via GitOps
+> Relatório: https://docs.google.com/document/d/1fgQpNsPGOSZTqEKWE4jljNRQ37ftIUHs/edit
+> Vídeo: https://youtu.be/TFgtYMbo-XI 
 
 ---
 
