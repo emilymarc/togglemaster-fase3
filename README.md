@@ -1,6 +1,6 @@
 # ToggleMaster — Fase 3: IaC · CI/CD · DevSecOps · GitOps
 
-> POSTECH Tech Challenge — Pós-Tech Software Architecture  
+> POSTECH Tech Challenge — Pós-Tech Cloud Architecture and DevOps 
 > Fase 3: Infraestrutura como Código, Pipeline DevSecOps e entrega contínua via GitOps
 >
 > Acesse o [Relatório](https://docs.google.com/document/d/1fgQpNsPGOSZTqEKWE4jljNRQ37ftIUHs/edit) detalhado e 
@@ -293,4 +293,8 @@ syncPolicy:
 
 ## Autores
 Emily Marcolino
-POSTECH — Pós-Tech Software Architecture · Fase 3 · 2026
+Cristiano Alves de Oliveira Schaarschmidt
+Expedito Ferreira da Silva Filho
+
+Por:
+POSTECH — Pós-Tech Cloud Architecture and DevOps · Fase 3 · 2026
