@@ -292,9 +292,9 @@ syncPolicy:
 ---
 
 ## Autores
-Emily Marcolino
-Cristiano Alves de Oliveira Schaarschmidt
-Expedito Ferreira da Silva Filho
+- Emily Marcolino
+- Cristiano Alves de Oliveira Schaarschmidt
+- Expedito Ferreira da Silva Filho
 
 Por:
 POSTECH — Pós-Tech Cloud Architecture and DevOps · Fase 3 · 2026
